@@ -173,7 +173,12 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
 #开始获取
 for itemid in marketable_items:
     #获取道具名称
-    item_name = urlGet(f'https://cafemaker.wakingsands.com/item/{itemid}?columns=Name')['Name']
+    n = urlGet(f'https://cafemaker.wakingsands.com/item/{itemid}?columns=Name')
+    if n!='':
+        item_name = n['Name']
+    else:
+        item_name = ''
+        print(f'{itemid}的名称获取失败')
     #打印进度
     print("<剩余"+str(time.strftime("%Hh%Mm%Ss",time.gmtime((time.time()-time_start)/item_progress*(item_count-item_progress))))+">["+str(item_progress)+"/"+str(item_count)+"]"+str(itemid)+" - "+str(item_name))
     item_progress+=1
@@ -211,6 +216,7 @@ s.close()
     2022/01/29:
         1. 增加方法urlGet以防止resquests.get()出错（最多重试三次），出错时跳过这个物品
         2. 道具名称列写入universalis的超链接
+        3. 修复对道具名称查询的容错问题
 
 后续方向：
     1. 组合交易数量进行平均价的计算
