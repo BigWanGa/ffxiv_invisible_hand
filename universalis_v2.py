@@ -13,7 +13,7 @@ import getopt
 #----------配置部分----------
 #调试配置
 isDebug = False             #调试开关
-debugCounts = 100           #限定查询条目数，仅开启调试时生效
+debugCounts = 30           #限定查询条目数，仅开启调试时生效
 
 #缓存配置
 isClear = False             #重置缓存开关，也可以在运行脚本时使用参数激活此选项
@@ -99,7 +99,12 @@ def pro_bar(s, now, total):
 
 #命令行参数响应
 argv = sys.argv[1:]
-if '--clean' in argv: isClear = True        #响应'--clean'清理缓存选项
+if '--clear' in argv:
+    isClear = True        #响应'--clear'清理缓存选项
+    print('选项：清理缓存')
+if '--debug' in argv:
+    isDebug = True        #响应'--debug'开启调试选项
+    print('选项：调试模式')
 
 #初始化：获取可交易物品列表并缓存到本地，类型为list
 s=requests.session()
@@ -121,10 +126,14 @@ else:
 
 #初始化：获取道具中文名称并缓存到本地，类型为
 if not(isClear) and os.path.isfile(n_path):
-    fn=open(n_path,'r')
-    itemNames = json.loads(fn.read())
-    fn.close()
-    print(f'从缓存载入了{len(itemNames)}个道具中文名\n')
+    try:
+        fn=open(n_path,'r')
+        itemNames = json.loads(fn.read())
+        fn.close()
+        print(f'从缓存载入了{len(itemNames)}个道具中文名\n')
+    except:
+        print('读取道具中文名出错，已删除缓存，请重新运行本脚本\n')
+        os.remove(n_path)
 else:
     itemNames = {}
     list_fail = []
@@ -133,16 +142,17 @@ else:
     for id in marketable_items:
         n = urlGet(f'{url_itemNames}{id}{url_itemNames_arg}')
         if n!='':
-            itemNames[id] = n
+            itemNames[id] = n['Name']
         else:
             itemNames[id] = ''
             list_fail.append(id)
         i+=1
+        if isDebug and i >= debugCounts:break   #若开启调试模式则限制查询数量
         pro_bar('正在拉取道具列表', i, total)
     if len(itemNames)!=0:
-        print(f'获取了{len(itemNames)/total}个物品的中文名称，现在写入到缓存文件\n')
+        print(f'获取了{len(itemNames)}/{total}个物品的中文名称，现在写入到缓存文件\n')
         fn=open(n_path,'w')
-        fn.write(str(json.loads(itemNames)))
+        fn.write(json.dumps(itemNames))
         fn.close()
         if os.path.isfile(n_path):
             print('写入成功\n')
@@ -151,7 +161,7 @@ else:
     if len(list_fail)!=0:
         print(f'以下id获取名称失败：\n{list_fail}，将写入日志{fail_path}\n')
         fn=open(fail_path,'w')
-        fn.write(str(json.loads(list_fail)))
+        fn.write(json.dumps(list_fail))
         fn.close()
         if os.path.isfile(fail_path):
             print('写入成功\n')
@@ -275,7 +285,7 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
 #开始获取
 for itemid in marketable_items:
     #获取道具名称
-    item_name = itemNames['itemid']
+    item_name = itemNames[str(itemid)]
     if item_name == '':continue
     
     #打印进度
@@ -321,6 +331,7 @@ s.close()
         2. 增加近一月内的成交金额列
         3. 增加导出表格时的筛选
         4. 增加对道具中文名的缓存
+        5. 初步添加对缓存读取出错的清理缓存机制
 
 后续方向：
     1. 组合交易数量进行平均价的计算
@@ -328,4 +339,6 @@ s.close()
     3. 逐步确定筛选条件，最终做到每天在网页上刷新两次当日推荐商品top50
     4. 添加对名称获取失败的道具重新查询名称的功能
     5. 将写入文件与错误处理及提示封装为独立函数
+    6. 进一步完善需要的命令行参数功能，例如参数指定调试次数
+    7. 完善缓存读取出错时的应对机制，加入对缓存文件完整性检查、缓存文件写入进度检查、缓存文件更新必要性判断等
 '''
