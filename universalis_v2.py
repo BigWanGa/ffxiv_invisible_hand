@@ -5,6 +5,7 @@ import requests
 import time
 import os
 import numpy as np
+import openpyxl
 
 #----------配置部分----------
 #调试配置
@@ -24,6 +25,8 @@ order_datacenter_cur = 4                #全区挂售价只看最低的前几
 order_world_his = 5                     #本服成交价只看最近的前几，为-1时则使用按统计成交记录的范围
 order_world_cur = 4                     #本服挂售价只看最低的前几
 
+#结果输出
+f_path = f'{world_name}.xlsx'
 #----------配置结束----------
 
 '''
@@ -62,26 +65,30 @@ else:
     exit()
 
 #初始化csv文件
-f_path = f'{world_name}.csv'
+f_column = []
+f_column.append('物品ID')
+f_column.append('物品名称')
+f_column.append('全区挂售价')
+f_column.append('全区挂售价标准差')
+f_column.append('本服成交价')
+f_column.append('本服成交价标准差')
+f_column.append('本服成交价波动')
+f_column.append('本服挂售价')
+f_column.append('本服挂售价标准差')
+f_column.append('本服挂售价与成交价差值')
+f_column.append('利润率')
+f_column.append('单价差')
+f_column.append('本服近一个月成交次数')
+f_column.append('本服近一个月成交数量')
+f_column.append('本服近一个月成交金额')
 
-c1 = '物品ID'
-c2 = '物品名称'
-c3 = '全区挂售价'
-c4 = '全区挂售价标准差'
-c5 = '本服成交价'
-c6 = '本服成交价标准差'
-c6_p = '本服成交价波动'
-c7 = '本服挂售价'
-c8 = '本服挂售价标准差'
-c9 = '本服挂售价与成交价差值'
-c10 = '利润率'
-c11 = '单价差'
-c12 = '本服近一个月成交次数'
-c13 = '本服近一个月成交数量'
-
-f_column = f'{c1},{c2},{c3},{c4},{c5},{c6},{c6_p},{c7},{c8},{c9},{c10},{c11},{c12},{c13}\n'
-with open(f_path,'w') as f:
-    f.write(f_column)
+#f_column = f'{c1},{c2},{c3},{c4},{c5},{c6},{c6_p},{c7},{c8},{c9},{c10},{c11},{c12},{c13}\n'
+wb = openpyxl.Workbook()
+ws=wb.active
+ws.append(f_column)
+wb.save(f_path)
+#with open(f_path,'w') as f:
+#    f.write(f_column)
 #初始化csv文件完毕
 
 #记录进度
@@ -107,6 +114,7 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
     #分析本服成交数据
     count_in_time = 0   #本服成交量
     fre_in_time = 0     #本服成交次数
+    money_in_time = 0   #本服成交金额
     i = 0
     list_world_his = []
     for item in data_his['entries']:
@@ -114,6 +122,7 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
             if time_start-item['timestamp'] <= order_time:
                 count_in_time+=item['quantity']
                 fre_in_time+=1
+                money_in_time+=item['pricePerUnit']
                 if order_world_his==-1:
                     list_world_his.append(item['pricePerUnit'])
             if order_world_his!=-1:    
@@ -165,10 +174,15 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
     #若无数据则不写入
     if avg_list_world_cur==0 and avg_list_world_his==0 and avg_list_datacenter_cur==0: return
 
-    name_link = f'=HYPERLINK("https://universalis.app/market/{id},"{name}{q}")'
+    name_link = f'=HYPERLINK("https://universalis.app/market/{id}","{name}{q}")'
+    result = [f'{id}{q}',name_link,avg_list_datacenter_cur,std_list_datacenter_cur,avg_list_world_his,std_list_world_his,p_world_his,avg_list_world_cur,std_list_world_cur,avg_list_world_cur-avg_list_world_his,rate,avg_list_world_his-avg_list_datacenter_cur,fre_in_time,count_in_time,money_in_time]
     #写入结果
-    with open(f_path,'a') as f:
-        f.write(f'{id}{q},{name_link},{avg_list_datacenter_cur},{std_list_datacenter_cur},{avg_list_world_his},{std_list_world_his},{p_world_his},{avg_list_world_cur},{std_list_world_cur},{avg_list_world_cur-avg_list_world_his},{rate},{avg_list_world_his-avg_list_datacenter_cur},{fre_in_time},{count_in_time}\n')
+    wb = openpyxl.load_workbook(f_path)
+    wb.active.append(result)
+    wb.save(f_path)
+
+    #with open(f_path,'a') as f:
+    #    f.write(f'{id}{q},{name}{q},{avg_list_datacenter_cur},{std_list_datacenter_cur},{avg_list_world_his},{std_list_world_his},{p_world_his},{avg_list_world_cur},{std_list_world_cur},{avg_list_world_cur-avg_list_world_his},{rate},{avg_list_world_his-avg_list_datacenter_cur},{fre_in_time},{count_in_time}\n')
 
 #开始获取
 for itemid in marketable_items:
@@ -215,8 +229,10 @@ s.close()
         7. 将经过时间累积改为剩余时间估算
     2022/01/29:
         1. 增加方法urlGet以防止resquests.get()出错（最多重试三次），出错时跳过这个物品
-        2. 道具名称列写入universalis的超链接
-        3. 修复对道具名称查询的容错问题
+        2. 修复对道具名称查询的容错问题
+    2022/01/31:
+        1. 改用openpyxl写入Excel，以实现道具名称列写入universalis的超链接
+        2. 增加近一月内的成交金额列
 
 后续方向：
     1. 组合交易数量进行平均价的计算
