@@ -1,22 +1,32 @@
 #!/usr/bin/python3
 import json
+import re
 from urllib import response
 import requests
 import time
 import os
 import numpy as np
 import openpyxl
+import sys
+import getopt
 
 #----------配置部分----------
 #调试配置
 isDebug = False             #调试开关
 debugCounts = 100           #限定查询条目数，仅开启调试时生效
 
+#缓存配置
+isClear = False             #重置缓存开关，也可以在运行脚本时使用参数激活此选项
+isSkipNoName = False         #跳过没有缓存到中文名的道具，大概率是国服未上线道具，但也可能是网络原因。开启的意义是加速查询过程
+
 #区服ID与API网址
 world_name = '白银乡'
 datacenter_name = '莫古力'
 url_now = 'https://universalis.app/api'
 url_history = 'https://universalis.app/api/history'
+url_marketable = 'https://universalis.app/api/marketable'
+url_itemNames = 'https://cafemaker.wakingsands.com/item/'
+url_itemNames_arg = '?columns=Name'
 
 #分析参数
 order_day = 30                          #统计多少天内的成交记录
@@ -25,8 +35,18 @@ order_datacenter_cur = 4                #全区挂售价只看最低的前几
 order_world_his = 5                     #本服成交价只看最近的前几，为-1时则使用按统计成交记录的范围
 order_world_cur = 4                     #本服挂售价只看最低的前几
 
-#结果输出
+#输出与缓存路径
 f_path = f'{world_name}.xlsx'
+m_path = 'marketable.json'
+n_path = 'itemName.json'
+fail_path = 'fail_itemName.json'
+
+#筛选配置
+isfilter = False        #筛选开关
+rate_min = 1.5          #利润率最小值
+rate_max = 20           #利润率最大值
+count_in_time_min = 15 #月成交次数最小值
+p_world_his_max = 0.4   #本服成交价波动最大值
 #----------配置结束----------
 
 '''
@@ -46,15 +66,50 @@ f_path = f'{world_name}.xlsx'
         8.NQ与HQ作为两种道具对待
 '''
 
+#封装一个带错误处理的数据获取方法
+def urlGet(url):
+    i = 3   #最多重试三次
+    while i>=0:
+        try:
+            return json.loads(s.get(url=url).content.decode())
+        except:
+            i-=1
+    return ''
+
+#筛选规则
+def filter(rate, count_in_time, p_world_his):
+    if rate < rate_min or rate > rate_max: return False
+    if count_in_time < count_in_time_min: return False
+    if p_world_his > p_world_his_max: return False
+    return True
+
+#进度条
+def pro_bar(s, now, total):
+    n_bar = 20
+    l_bar = '_'
+    c_bar = '='
+    str_bar = ''
+    for i in range(n_bar):
+        if i/n_bar <= now/total:
+            str_bar+=l_bar
+        else:
+            str_bar+=c_bar
+    print(f'{s}:{str_bar} - {now}/{total}',end='\r')
+    return
+
+#命令行参数响应
+argv = sys.argv[1:]
+if '--clean' in argv: isClear = True        #响应'--clean'清理缓存选项
+
 #初始化：获取可交易物品列表并缓存到本地，类型为list
 s=requests.session()
-if os.path.isfile("marketable.json"):
-    fm=open("marketable.json","r")
+if not(isClear) and os.path.isfile(m_path):
+    fm=open(m_path,"r")
     marketable_items=json.loads(fm.read())
     fm.close()
 else:
-    marketable_items=json.loads(s.get(url="https://universalis.app/api/marketable").content.decode())
-    fm=open("marketable.json","w")
+    marketable_items=json.loads(s.get(url=url_marketable).content.decode())
+    fm=open(m_path,"w")
     fm.write(str(marketable_items))
     fm.close()
 
@@ -64,7 +119,46 @@ else:
     print("可交易物品列表初始化失败，退出")
     exit()
 
-#初始化csv文件
+#初始化：获取道具中文名称并缓存到本地，类型为
+if not(isClear) and os.path.isfile(n_path):
+    fn=open(n_path,'r')
+    itemNames = json.loads(fn.read())
+    fn.close()
+    print(f'从缓存载入了{len(itemNames)}个道具中文名\n')
+else:
+    itemNames = {}
+    list_fail = []
+    i = 0
+    total = len(marketable_items)
+    for id in marketable_items:
+        n = urlGet(f'{url_itemNames}{id}{url_itemNames_arg}')
+        if n!='':
+            itemNames[id] = n
+        else:
+            itemNames[id] = ''
+            list_fail.append(id)
+        i+=1
+        pro_bar('正在拉取道具列表', i, total)
+    if len(itemNames)!=0:
+        print(f'获取了{len(itemNames)/total}个物品的中文名称，现在写入到缓存文件\n')
+        fn=open(n_path,'w')
+        fn.write(str(json.loads(itemNames)))
+        fn.close()
+        if os.path.isfile(n_path):
+            print('写入成功\n')
+        else:
+            print('写入失败，请检查权限或存储器剩余空间\n')
+    if len(list_fail)!=0:
+        print(f'以下id获取名称失败：\n{list_fail}，将写入日志{fail_path}\n')
+        fn=open(fail_path,'w')
+        fn.write(str(json.loads(list_fail)))
+        fn.close()
+        if os.path.isfile(fail_path):
+            print('写入成功\n')
+        else:
+            print('写入失败，请检查权限或存储器剩余空间\n')
+
+#初始化c：生成xlsx文件并写入首行
 f_column = []
 f_column.append('物品ID')
 f_column.append('物品名称')
@@ -95,16 +189,6 @@ wb.save(f_path)
 item_count=len(marketable_items)
 item_progress=1
 time_start=time.time()
-
-#封装一个带错误处理的数据获取方法
-def urlGet(url):
-    i = 3   #最多重试三次
-    while i>=0:
-        try:
-            return json.loads(s.get(url=url).content.decode())
-        except:
-            i-=1
-    return ''
 
 #分析物品的函数
 def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
@@ -173,6 +257,10 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
 
     #若无数据则不写入
     if avg_list_world_cur==0 and avg_list_world_his==0 and avg_list_datacenter_cur==0: return
+    #若开启输出过滤，则只输出过滤后的内容
+    if(isfilter):
+        if not(filter(rate, count_in_time, p_world_his)):
+            return
 
     name_link = f'=HYPERLINK("https://universalis.app/market/{id}","{name}{q}")'
     result = [f'{id}{q}',name_link,avg_list_datacenter_cur,std_list_datacenter_cur,avg_list_world_his,std_list_world_his,p_world_his,avg_list_world_cur,std_list_world_cur,avg_list_world_cur-avg_list_world_his,rate,avg_list_world_his-avg_list_datacenter_cur,fre_in_time,count_in_time,money_in_time]
@@ -187,12 +275,9 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
 #开始获取
 for itemid in marketable_items:
     #获取道具名称
-    n = urlGet(f'https://cafemaker.wakingsands.com/item/{itemid}?columns=Name')
-    if n!='':
-        item_name = n['Name']
-    else:
-        item_name = ''
-        print(f'{itemid}的名称获取失败')
+    item_name = itemNames['itemid']
+    if item_name == '':continue
+    
     #打印进度
     print("<剩余"+str(time.strftime("%Hh%Mm%Ss",time.gmtime((time.time()-time_start)/item_progress*(item_count-item_progress))))+">["+str(item_progress)+"/"+str(item_count)+"]"+str(itemid)+" - "+str(item_name))
     item_progress+=1
@@ -217,6 +302,7 @@ for itemid in marketable_items:
 #结束，关闭会话
 s.close()
 
+
 '''
 更新记录：
     2022/01/28:
@@ -233,8 +319,13 @@ s.close()
     2022/01/31:
         1. 改用openpyxl写入Excel，以实现道具名称列写入universalis的超链接
         2. 增加近一月内的成交金额列
+        3. 增加导出表格时的筛选
+        4. 增加对道具中文名的缓存
 
 后续方向：
     1. 组合交易数量进行平均价的计算
     2. 对可堆叠和不可堆叠的道具分别优化计算方式
+    3. 逐步确定筛选条件，最终做到每天在网页上刷新两次当日推荐商品top50
+    4. 添加对名称获取失败的道具重新查询名称的功能
+    5. 将写入文件与错误处理及提示封装为独立函数
 '''
