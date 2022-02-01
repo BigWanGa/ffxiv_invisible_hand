@@ -13,13 +13,14 @@ import getopt
 #----------配置部分----------
 #调试配置
 isDebug = False             #调试开关
-debugCounts = 30           #限定查询条目数，仅开启调试时生效
+debugCounts = 30            #限定查询条目数，仅开启调试时生效
+isDebugLog = False          #调试日志开关，用于打印额外日志
 
 #缓存配置
 isClear = False             #重置缓存开关，也可以在运行脚本时使用参数激活此选项
 isSkipNoName = False         #跳过没有缓存到中文名的道具，大概率是国服未上线道具，但也可能是网络原因。开启的意义是加速查询过程
 
-#区服ID与API网址
+#API相关
 world_name = '白银乡'
 datacenter_name = '莫古力'
 url_now = 'https://universalis.app/api'
@@ -27,6 +28,7 @@ url_history = 'https://universalis.app/api/history'
 url_marketable = 'https://universalis.app/api/marketable'
 url_itemNames = 'https://cafemaker.wakingsands.com/item/'
 url_itemNames_arg = '?columns=Name'
+block_version = ['6.0']                 #用于过滤国服未开放的版本道具
 
 #分析参数
 order_day = 30                          #统计多少天内的成交记录
@@ -65,13 +67,17 @@ p_world_his_max = 0.4   #本服成交价波动最大值
         7.以本区成交价平均值与全区挂售价平均值对比得出利润率、单价差
         8.NQ与HQ作为两种道具对待
 '''
+s=requests.session()
 
 #封装一个带错误处理的数据获取方法
 def urlGet(url):
     i = 3   #最多重试三次
+    if isDebugLog: time_s = time.time()
     while i>=0:
         try:
-            return json.loads(s.get(url=url).content.decode())
+            j = json.loads(s.get(url=url).content.decode())
+            if isDebugLog: print(f'\n\t----服务器响应用时：{int((time.time() - time_s) * 1000)}ms')
+            return j
         except:
             i-=1
     return ''
@@ -99,21 +105,36 @@ def pro_bar(s, now, total):
 
 #命令行参数响应
 argv = sys.argv[1:]
-if '--clear' in argv:
-    isClear = True        #响应'--clear'清理缓存选项
-    print('选项：清理缓存')
-if '--debug' in argv:
-    isDebug = True        #响应'--debug'开启调试选项
-    print('选项：调试模式')
+for arg in argv:
+    if arg == '--clear':
+        isClear = True          #响应'--clear'清理缓存选项
+        print('选项：清理缓存')
+    if arg == '--debug':
+        isDebug = True          #响应'--debug'开启调试选项
+        print('选项：调试模式')
+    if arg == '--log':          #响应'--log'输出额外日志选项
+        isDebugLog = True
+        print('选项：开启额外日志输出')
 
 #初始化：获取可交易物品列表并缓存到本地，类型为list
-s=requests.session()
 if not(isClear) and os.path.isfile(m_path):
     fm=open(m_path,"r")
     marketable_items=json.loads(fm.read())
     fm.close()
 else:
     marketable_items=json.loads(s.get(url=url_marketable).content.decode())
+    #检查道具版本，去除国服当前未进版的道具
+    total = len(marketable_items)
+    i = 0
+    for itemid in marketable_items:
+        time_s = time.time()
+        if urlGet(f'https://xivapi.com/item/{itemid}?columns=GamePatch.Version')['GamePatch']['Version'] in block_version:
+            marketable_items.remove(itemid)
+        pro_bar(f'正在检查道具版本，耗时{int(1000 * (time.time() - time_s))}ms', i, total)
+        i+=1
+    s.close()
+    print(f'道具版本检查完成，剔除了{total - len(marketable_items)}个国服未进版的道具')
+    #道具版本检查完成，写入缓存
     fm=open(m_path,"w")
     fm.write(str(marketable_items))
     fm.close()
@@ -135,24 +156,25 @@ if not(isClear) and os.path.isfile(n_path):
         print('读取道具中文名出错，已删除缓存，请重新运行本脚本\n')
         os.remove(n_path)
 else:
-    itemNames = {}
+    _itemNames = {}
     list_fail = []
     i = 0
     total = len(marketable_items)
     for id in marketable_items:
         n = urlGet(f'{url_itemNames}{id}{url_itemNames_arg}')
         if n!='':
-            itemNames[id] = n['Name']
+            _itemNames[id] = n['Name']
         else:
-            itemNames[id] = ''
+            _itemNames[id] = ''
             list_fail.append(id)
         i+=1
         if isDebug and i >= debugCounts:break   #若开启调试模式则限制查询数量
-        pro_bar('正在拉取道具列表', i, total)
-    if len(itemNames)!=0:
-        print(f'获取了{len(itemNames)}/{total}个物品的中文名称，现在写入到缓存文件\n')
+        pro_bar('正在获取道具名称', i, total)
+    if len(_itemNames)!=0:
+        print(f'获取了{len(_itemNames)}/{total}个物品的中文名称，现在写入到缓存文件\n')
         fn=open(n_path,'w')
-        fn.write(json.dumps(itemNames))
+        itemNames = json.dump(_itemNames)
+        fn.write(itemNames)
         fn.close()
         if os.path.isfile(n_path):
             print('写入成功\n')
@@ -332,6 +354,8 @@ s.close()
         3. 增加导出表格时的筛选
         4. 增加对道具中文名的缓存
         5. 初步添加对缓存读取出错的清理缓存机制
+    2022/02/01:
+        1. 增加对网络响应耗时的输出
 
 后续方向：
     1. 组合交易数量进行平均价的计算
@@ -341,4 +365,9 @@ s.close()
     5. 将写入文件与错误处理及提示封装为独立函数
     6. 进一步完善需要的命令行参数功能，例如参数指定调试次数
     7. 完善缓存读取出错时的应对机制，加入对缓存文件完整性检查、缓存文件写入进度检查、缓存文件更新必要性判断等
+
+笔记：
+    1. 测试表明：
+        a. 若不使用单一会话，获取一次ffxiv的回报要1.2s；使用单一会话时只需0.4s
+        b. 若不指明要查询的数据列，拉取较多数据会让耗时增加近一倍
 '''
