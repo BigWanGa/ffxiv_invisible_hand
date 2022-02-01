@@ -132,6 +132,7 @@ else:
             marketable_items.remove(itemid)
         pro_bar(f'正在检查道具版本，耗时{int(1000 * (time.time() - time_s))}ms', i, total)
         i+=1
+        if isDebug and i >= debugCounts: break
     s.close()
     print(f'道具版本检查完成，剔除了{total - len(marketable_items)}个国服未进版的道具')
     #道具版本检查完成，写入缓存
@@ -146,36 +147,35 @@ else:
     exit()
 
 #初始化：获取道具中文名称并缓存到本地，类型为
+itemNames = dict()
 if not(isClear) and os.path.isfile(n_path):
     try:
         fn=open(n_path,'r')
-        itemNames = json.loads(fn.read())
+        itemNames = json.load(fn)
         fn.close()
         print(f'从缓存载入了{len(itemNames)}个道具中文名\n')
     except:
         print('读取道具中文名出错，已删除缓存，请重新运行本脚本\n')
         os.remove(n_path)
+        exit()
 else:
-    _itemNames = {}
     list_fail = []
     i = 0
     total = len(marketable_items)
     for id in marketable_items:
         n = urlGet(f'{url_itemNames}{id}{url_itemNames_arg}')
         if n!='':
-            _itemNames[id] = n['Name']
+            itemNames[str(id)] = n['Name']
         else:
-            _itemNames[id] = ''
+            itemNames[str(id)] = ''
             list_fail.append(id)
         i+=1
         if isDebug and i >= debugCounts:break   #若开启调试模式则限制查询数量
         pro_bar('正在获取道具名称', i, total)
-    if len(_itemNames)!=0:
-        print(f'获取了{len(_itemNames)}/{total}个物品的中文名称，现在写入到缓存文件\n')
-        fn=open(n_path,'w')
-        itemNames = json.dump(_itemNames)
-        fn.write(itemNames)
-        fn.close()
+    if len(itemNames)!=0:
+        print(f'获取了{len(itemNames)}/{total}个物品的中文名称，现在写入到缓存文件\n')
+        with open(n_path,'w') as fn:
+            json.dump(itemNames, fn)
         if os.path.isfile(n_path):
             print('写入成功\n')
         else:
@@ -370,4 +370,5 @@ s.close()
     1. 测试表明：
         a. 若不使用单一会话，获取一次ffxiv的回报要1.2s；使用单一会话时只需0.4s
         b. 若不指明要查询的数据列，拉取较多数据会让耗时增加近一倍
+    2. 踩坑：json存储字典的key会把int存为string
 '''
