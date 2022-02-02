@@ -212,7 +212,7 @@ f_column.append('本服近一个月成交金额')
 wb = openpyxl.Workbook()
 ws=wb.active
 ws.append(f_column)
-wb.save(f_path)
+#wb.save(f_path)
 #with open(f_path,'w') as f:
 #    f.write(f_column)
 #初始化csv文件完毕
@@ -298,12 +298,13 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
 
     name_link = f'=HYPERLINK("https://universalis.app/market/{id}","{name}{q}")'
     result = [f'{id}{q}',name_link,avg_list_datacenter_cur,std_list_datacenter_cur,avg_list_world_his,std_list_world_his,p_world_his,avg_list_world_cur,std_list_world_cur,avg_list_world_cur-avg_list_world_his,rate,avg_list_world_his-avg_list_datacenter_cur,fre_in_time,count_in_time,money_in_time]
-    #写入结果
-    wb = openpyxl.load_workbook(f_path)
-    wb.active.append(result)
-    wb.save(f_path)
-
     if isDebugLog:  print(f'\n\t----数据分析用时：{int((time.time() - time_a) * 1000)}ms')
+
+    #写入结果
+    if isDebugLog: time_s = time.time()
+    wb.active.append(result)
+    if isDebugLog:  print(f'\n\t----写入文件用时：{int((time.time() - time_s) * 1000)}ms')
+
     #with open(f_path,'a') as f:
     #    f.write(f'{id}{q},{name}{q},{avg_list_datacenter_cur},{std_list_datacenter_cur},{avg_list_world_his},{std_list_world_his},{p_world_his},{avg_list_world_cur},{std_list_world_cur},{avg_list_world_cur-avg_list_world_his},{rate},{avg_list_world_his-avg_list_datacenter_cur},{fre_in_time},{count_in_time}\n')
 
@@ -338,7 +339,10 @@ for itemid in marketable_items:
         if debugCounts<=0:break
 #结束，关闭会话
 s.close()
-
+#写入文件
+if isDebugLog: time_r = time.time()
+wb.save(f_path)
+if isDebugLog: print(f'\n\t----写入结果用时：{int((time.time() - time_r) * 1000)}ms')
 
 '''
 更新记录：
