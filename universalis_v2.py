@@ -224,9 +224,11 @@ time_start=time.time()
 
 #分析物品的函数
 def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
+
+    if isDebugLog: time_a = time.time()
     #初始化道具后缀
     q = 'HQ' if isHQ else 'NQ'
-
+    
     #分析本服成交数据
     count_in_time = 0   #本服成交量
     fre_in_time = 0     #本服成交次数
@@ -301,13 +303,16 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
     wb.active.append(result)
     wb.save(f_path)
 
+    if isDebugLog:  print(f'\n\t----数据分析用时：{int((time.time() - time_a) * 1000)}ms')
     #with open(f_path,'a') as f:
     #    f.write(f'{id}{q},{name}{q},{avg_list_datacenter_cur},{std_list_datacenter_cur},{avg_list_world_his},{std_list_world_his},{p_world_his},{avg_list_world_cur},{std_list_world_cur},{avg_list_world_cur-avg_list_world_his},{rate},{avg_list_world_his-avg_list_datacenter_cur},{fre_in_time},{count_in_time}\n')
 
 #开始获取
 for itemid in marketable_items:
     #获取道具名称
+    if isDebugLog: time_f = time.time()
     item_name = itemNames[str(itemid)]
+    if isDebugLog: print(f'\n\t----名称查找用时：{int((time.time() - time_f) * 1000)}ms')
     if item_name == '':continue
     
     #打印进度
