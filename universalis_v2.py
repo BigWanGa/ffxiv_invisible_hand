@@ -240,7 +240,7 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
             if time_start-item['timestamp'] <= order_time:
                 count_in_time+=item['quantity']
                 fre_in_time+=1
-                money_in_time+=item['pricePerUnit']
+                money_in_time+=item['pricePerUnit'] * item['quantity']
                 if order_world_his==-1:
                     list_world_his.append(item['pricePerUnit'])
             if order_world_his!=-1:    
