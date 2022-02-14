@@ -166,16 +166,16 @@ else:
     for id in marketable_items:
         info = urlGet(f'{url_itemInfo}{id}{url_itemInfo_arg}')
         info_dict = dict()
-        if info['StackSize'] == '':
+        if info == '':
             info_dict['StackSize'] = 0
+            info_dict['Name_cn'] = ''
         else:
             info_dict['StackSize'] = info['StackSize']
-        info_dict['Name_cn'] = info['Name']
-        if info['Name']!='':
-            info_dict['Name_cn'] = info['Name']
-        else:
-            info_dict['Name_cn'] = ''
-            list_fail.append(id)
+            if info['Name']!='':
+                info_dict['Name_cn'] = info['Name']
+            else:
+                info_dict['Name_cn'] = ''
+                list_fail.append(id)
         itemInfo[str(id)] = info_dict
         if isDebug: i+=1    #若开启调查模式则统计查询次数
         if isDebug and i >= debugCounts:break   #若开启调试模式则限制查询次数
