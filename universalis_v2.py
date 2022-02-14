@@ -166,7 +166,10 @@ else:
     for id in marketable_items:
         info = urlGet(f'{url_itemInfo}{id}{url_itemInfo_arg}')
         info_dict = dict()
-        info_dict['StackSize'] = info['StackSize']
+        if info['StackSize'] == '':
+            info_dict['StackSize'] = 0
+        else:
+            info_dict['StackSize'] = info['StackSize']
         info_dict['Name_cn'] = info['Name']
         if info['Name']!='':
             info_dict['Name_cn'] = info['Name']
