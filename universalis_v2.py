@@ -26,8 +26,8 @@ datacenter_name = '莫古力'
 url_now = 'https://universalis.app/api'
 url_history = 'https://universalis.app/api/history'
 url_marketable = 'https://universalis.app/api/marketable'
-url_itemNames = 'https://cafemaker.wakingsands.com/item/'
-url_itemNames_arg = '?columns=Name'
+url_itemInfo = 'https://cafemaker.wakingsands.com/item/'
+url_itemInfo_arg = '?columns=Name,StackSize'
 block_version = ['6.0']                 #用于过滤国服未开放的版本道具
 
 #分析参数
@@ -146,36 +146,41 @@ else:
     print("可交易物品列表初始化失败，退出")
     exit()
 
-#初始化：获取道具中文名称并缓存到本地，类型为
-itemNames = dict()
+#初始化：获取道具固有数据并缓存到本地，类型为dict
+#固有数据包括：中文名称，堆叠数量
+itemInfo = dict()
 if not(isClear) and os.path.isfile(n_path):
     try:
         fn=open(n_path,'r')
-        itemNames = json.load(fn)
+        itemInfo = json.load(fn)
         fn.close()
-        print(f'从缓存载入了{len(itemNames)}个道具中文名\n')
+        print(f'从缓存载入了{len(itemInfo)}个道具数据\n')
     except:
         print('读取道具中文名出错，已删除缓存，请重新运行本脚本\n')
         os.remove(n_path)
         exit()
 else:
     list_fail = []
-    i = 0
+    if isDebug: i = 0       #若开启调查模式则统计查询次数
     total = len(marketable_items)
     for id in marketable_items:
-        n = urlGet(f'{url_itemNames}{id}{url_itemNames_arg}')
-        if n!='':
-            itemNames[str(id)] = n['Name']
+        info = urlGet(f'{url_itemInfo}{id}{url_itemInfo_arg}')
+        info_dict = dict()
+        info_dict['StackSize'] = info['StackSize']
+        info_dict['Name_cn'] = info['Name']
+        if info['Name']!='':
+            info_dict['Name_cn'] = info['Name']
         else:
-            itemNames[str(id)] = ''
+            info_dict['Name_cn'] = ''
             list_fail.append(id)
-        i+=1
-        if isDebug and i >= debugCounts:break   #若开启调试模式则限制查询数量
+        itemInfo[str(id)] = info_dict
+        if isDebug: i+=1    #若开启调查模式则统计查询次数
+        if isDebug and i >= debugCounts:break   #若开启调试模式则限制查询次数
         pro_bar('正在获取道具名称', i, total)
-    if len(itemNames)!=0:
-        print(f'获取了{len(itemNames)}/{total}个物品的中文名称，现在写入到缓存文件\n')
+    if len(itemInfo)!=0:
+        print(f'获取了{len(itemInfo)}/{total}个物品的中文名称，现在写入到缓存文件\n')
         with open(n_path,'w') as fn:
-            json.dump(itemNames, fn)
+            json.dump(itemInfo, fn)
         if os.path.isfile(n_path):
             print('写入成功\n')
         else:
@@ -194,6 +199,7 @@ else:
 f_column = []
 f_column.append('物品ID')
 f_column.append('物品名称')
+f_column.append('最大堆叠数量')
 f_column.append('全区挂售价')
 f_column.append('全区挂售价标准差')
 f_column.append('本服成交价')
@@ -208,13 +214,9 @@ f_column.append('本服近一个月成交次数')
 f_column.append('本服近一个月成交数量')
 f_column.append('本服近一个月成交金额')
 
-#f_column = f'{c1},{c2},{c3},{c4},{c5},{c6},{c6_p},{c7},{c8},{c9},{c10},{c11},{c12},{c13}\n'
 wb = openpyxl.Workbook()
 ws=wb.active
 ws.append(f_column)
-#wb.save(f_path)
-#with open(f_path,'w') as f:
-#    f.write(f_column)
 #初始化csv文件完毕
 
 #记录进度
@@ -296,8 +298,9 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
         if not(filter(rate, count_in_time, p_world_his)):
             return
 
+    #杂项数据生成
     name_link = f'=HYPERLINK("https://universalis.app/market/{id}","{name}{q}")'
-    result = [f'{id}{q}',name_link,avg_list_datacenter_cur,std_list_datacenter_cur,avg_list_world_his,std_list_world_his,p_world_his,avg_list_world_cur,std_list_world_cur,avg_list_world_cur-avg_list_world_his,rate,avg_list_world_his-avg_list_datacenter_cur,fre_in_time,count_in_time,money_in_time]
+    result = [str(id)+q,name_link,itemInfo[str(itemid)]['StackSize'],avg_list_datacenter_cur,std_list_datacenter_cur,avg_list_world_his,std_list_world_his,p_world_his,avg_list_world_cur,std_list_world_cur,avg_list_world_cur-avg_list_world_his,rate,avg_list_world_his-avg_list_datacenter_cur,fre_in_time,count_in_time,money_in_time]
     if isDebugLog:  print(f'\n\t----数据分析用时：{int((time.time() - time_a) * 1000)}ms')
 
     #写入结果
@@ -305,14 +308,11 @@ def analyse(id, name, data_cur, data_his, data_dc_cur, isHQ):
     wb.active.append(result)
     if isDebugLog:  print(f'\n\t----写入文件用时：{int((time.time() - time_s) * 1000)}ms')
 
-    #with open(f_path,'a') as f:
-    #    f.write(f'{id}{q},{name}{q},{avg_list_datacenter_cur},{std_list_datacenter_cur},{avg_list_world_his},{std_list_world_his},{p_world_his},{avg_list_world_cur},{std_list_world_cur},{avg_list_world_cur-avg_list_world_his},{rate},{avg_list_world_his-avg_list_datacenter_cur},{fre_in_time},{count_in_time}\n')
-
 #开始获取
 for itemid in marketable_items:
     #获取道具名称
     if isDebugLog: time_f = time.time()
-    item_name = itemNames[str(itemid)]
+    item_name = itemInfo[str(itemid)]['Name_cn']
     if isDebugLog: print(f'\n\t----名称查找用时：{int((time.time() - time_f) * 1000)}ms')
     if item_name == '':continue
     
@@ -367,6 +367,9 @@ if isDebugLog: print(f'\n\t----写入结果用时：{int((time.time() - time_r) 
         1. 增加对网络响应耗时的输出
     2022/02/02:
         1. 分析发现变慢是因为之前错误地重复打开文件，修正了这一错误，并将每分析一次写入一次文件改为最后写入文件
+    2022/02/14:
+        1. 修复累计本服近一月成交额时没计算数量的bug
+        2. 输出表格中添加道具的可堆叠性列
 
 后续方向：
     1. 组合交易数量进行平均价的计算
